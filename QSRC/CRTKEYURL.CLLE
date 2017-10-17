@@ -1,0 +1,22 @@
+             PGM
+
+             /* Google Map API Key and Url */
+             CRTDTAARA  DTAARA(MAPAPIKEY) TYPE(*CHAR) LEN(50) +
+                          VALUE('AIzaSyAcHuf0GOCLTKtejDkejaSafoYX8fdiO_Y') +
+                          TEXT('API Key for Google Map API')
+
+             CRTDTAARA  DTAARA(MAPAPIURL) TYPE(*CHAR) LEN(100) +
+                          VALUE('https://maps.googleapis.com/maps/api/') TEXT('API +
+                          Url for Google Map API')
+
+             /* Google Url Shorten API Key and Url */
+             CRTDTAARA  DTAARA(URLAPIKEY) TYPE(*CHAR) LEN(50) +
+                          VALUE('AIzaSyDYzvKzekQ2F3EDz6juMzZt_vJAFL_yCZg') +
+                          TEXT('API Key for Google URL Shorten API')
+
+             CRTDTAARA  DTAARA(URLAPIURL) TYPE(*CHAR) LEN(100) +
+                          VALUE('https://www.googleapis.com/urlshortener/v1/url') +
+                          TEXT('API Url for Google URL Shorten API')
+
+             ENDPGM
+
