@@ -73,18 +73,18 @@
 
 // For Google Map API
 // Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
-  dcl-s sMapKey         varchar(500) inz('key=AIzaSyAcHuf0GOCLTKtejDkejaSafoYX8fdiO_Y');
+  dcl-s sMapKey         varchar(500) inz('key=your_key');
   dcl-s sMapUrl         varchar(500) inz('https://maps.googleapis.com/maps/api/');
 
 // For Google URL Shorten API
 // Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
-  dcl-s sMiniKey        varchar(500) inz('key=AIzaSyDYzvKzekQ2F3EDz6juMzZt_vJAFL_yCZg');
+  dcl-s sMiniKey        varchar(500) inz('key=your_key');
   dcl-s sMiniUrl        varchar(500) inz('https://www.googleapis.com/urlshortener/v1/url');
 
 // For Bitly URL Shorten API
 // Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
   dcl-s sBitUrl         varchar(100) inz('https://api-ssl.bitly.com/v3');
-  dcl-s sBitToken       varchar(500) inz('03254a45bd6aed27ba41f66bd88cb3db5ff7cecd');
+  dcl-s sBitToken       varchar(500) inz('your_token');
 
   // 199395 **** dcl-c cSQL_Java_Proc_Err           -7008;      // S8434
   dcl-c cSQL_Java_Proc_Err           -4302;      // 199395
