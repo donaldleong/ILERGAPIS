@@ -1,5 +1,23 @@
 **free
 //--------------------------------------------------------------------
+// >>PRE-COMPILER<<
+//
+//   >>TASK 199395<<
+//
+//   >>CRTCMD<< CRTSQLRPGI   OBJ(&LI/&OB) +
+//                           SRCFILE(&SL/&SF) +
+//                           SRCMBR(&SM) +
+//                           OBJTYPE(*MODULE) +
+//                           OPTION(*EVENTF) +
+//                           RPGPPOPT(*LVL2);
+//
+//   >>EXECUTE<<
+//
+//   >>CMD<<    UPDSRVPGM    SRVPGM(&LI/&OB) +
+//                           MODULE(&LI/&OB);
+//
+// >>END-PRE-COMPILER<<
+//--------------------------------------------------------------------
 //     Object ID: CELSGAPIS
 //   Description: Service Program for using Google APIs
 //        Author: Donald Leong
@@ -16,17 +34,25 @@
 // https://www.mcpressonline.com/programming-other/general/
 //         techtip-json-and-xml-conversion-in-db2-for-i
 // http://ibmsystemsmag.com/blogs/i-can/january-2017/json_table-function/
+// http://dev.bitly.com/transition_from_google.html
 //--------------------------------------------------------------------
 // Modifications:
 //--------------------------------------------------------------------
 // Mod#  |   Date     | Programmer   |   Description
 //--------------------------------------------------------------------
-//         09/21/2017      DL            Initial release
+// 162534  09/21/2017      DL         Initial release
+//
+// 198434  03/27/2018      EWH        Change getGoogleShort checksql to ignore
+// (S8434)                            error -4302 for Java stored procedure exception.
+//
+// 199395  04/02/2018      DL         Switch shorten/expand url from Google to
+//                                    Bitly due to google service deprecation
 //--------------------------------------------------------------------
 
-  ctl-opt nomain
+  ctl-opt copyright('Cels Enterprises Inc. 2017')
+    nomain
     debug option(*NODEBUGIO : *SRCSTMT : *NOUNREF : *NOSHOWCPY)
-    bnddir('QC2LE');
+    bnddir('CELSBNDDIR':'QC2LE');
 
 /copy CECOPYSRC,CELSDSPECS
 
@@ -46,76 +72,24 @@
   end-ds;
 
 // For Google Map API
-//  dcl-s sMapKey         varchar(50) inz('key=AIzaSyAcHuf0GOCLTKtejDkejaSafoYX8fdiO_Y');
-//  dcl-s sMapUrl         varchar(100) inz('https://maps.googleapis.com/maps/api/');
+// Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
+  dcl-s sMapKey         varchar(500) inz('key=AIzaSyAcHuf0GOCLTKtejDkejaSafoYX8fdiO_Y');
+  dcl-s sMapUrl         varchar(500) inz('https://maps.googleapis.com/maps/api/');
 
 // For Google URL Shorten API
-//  dcl-s sMiniKey        varchar(50) inz('key=AIzaSyDYzvKzekQ2F3EDz6juMzZt_vJAFL_yCZg');
-//  dcl-s sMiniUrl        varchar(100) inz('https://www.googleapis.com/urlshortener/v1/url');
+// Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
+  dcl-s sMiniKey        varchar(500) inz('key=AIzaSyDYzvKzekQ2F3EDz6juMzZt_vJAFL_yCZg');
+  dcl-s sMiniUrl        varchar(500) inz('https://www.googleapis.com/urlshortener/v1/url');
 
-//-------------------------------------------------------------
-// Get Google API key from data area
-//-------------------------------------------------------------
+// For Bitly URL Shorten API
+// Account: USERID = celsmisdept@gmail.com, PASWRD = 10****J**
+  dcl-s sBitUrl         varchar(100) inz('https://api-ssl.bitly.com/v3');
+  dcl-s sBitToken       varchar(500) inz('03254a45bd6aed27ba41f66bd88cb3db5ff7cecd');
 
- dcl-proc getApiKey     export;
-   dcl-pi *n            varchar(50);
-     sKeyName           char(3) const;
-   end-pi;
+  // 199395 **** dcl-c cSQL_Java_Proc_Err           -7008;      // S8434
+  dcl-c cSQL_Java_Proc_Err           -4302;      // 199395
+  dcl-c cSQL_Java_Proc_Err           -7008;
 
-   dcl-s sKey           char(50);
-
-// Define data areas
-   dcl-ds dsMapKey      dtaara('*LIBL/MAPAPIKEY');
-     sMapKey            char(50) pos(1);
-   end-ds;
-   dcl-ds dsLnkKey      dtaara('*LIBL/URLAPIKEY');
-     sLnkKey            char(50) pos(1);
-   end-ds;
-
-// Get keys from data areas
-   select;
-     when sKeyName = 'MAP';
-       in dsMapKey;
-       sKey = sMapKey;
-     when sKeyName = 'URL';
-       in dsLnkKey;
-       sKey = sLnkKey;
-   endsl;
-
-   return sKey;
- end-proc;
-
-//-------------------------------------------------------------
-// Get Google API URL from data area
-//-------------------------------------------------------------
-
- dcl-proc getApiUrl     export;
-   dcl-pi *n            varchar(100);
-     sApiName           char(3) const;
-   end-pi;
-
-   dcl-s sUrl           char(100);
-
-// Define data areas
-   dcl-ds dsMapKey      dtaara('*LIBL/MAPAPIURL');
-     sMapUrl            char(100) pos(1);
-   end-ds;
-   dcl-ds dsLnkKey      dtaara('*LIBL/URLAPIURL');
-     sLnkUrl            char(100) pos(1);
-   end-ds;
-
-// Get Urls from data areas
-   select;
-     when sApiName = 'MAP';
-       in dsMapUrl;
-       sUrl = sMapUrl;
-     when sApiName = 'URL';
-       in dsLnkKey;
-       sUrl = sLnkUrl;
-   endsl;
-
-   return sUrl;
- end-proc;
 
 //-------------------------------------------------------------
 // Get GeoCode from Google Map API
@@ -136,11 +110,11 @@
 
    dcl-s  sUrl          varchar(1024);
    dcl-s  sAddress      varchar(1024);
-   dcl-s  sMapKey       varchar(50);
-   dcl-s  sMapUrl       varchar(100);
    dcl-ds dsAddr        likeds(dsAddress);
 
-// Assemble address from input
+// Add jvm environment
+   addJvmEnvVar();
+
    dsAddr.sPlace = sVenueIn;
 
    if %parms >= %parmnum(sAddr1In) and %addr(sAddr1In) <> *null;
@@ -180,12 +154,6 @@
 
    if sAddress <> '';
 
-// Get API Key from data area
-     sMapKey = 'key='+getApiKey('MAP');
-
-// Get API Url from data area
-     sMapUrl = getApiUrl('MAP');
-
 // Reach out to GOOGLE to get data
      exec sql
        select *
@@ -208,8 +176,6 @@
 
    endif;
 
-// Geolocation pairs loaded as last 2 params to return to caller.
-// Here returns a boolean value to confirm sucess or fail of action
    return (sGeoLat <> '' and sGeoLng <> '');
  end-proc;
 
@@ -224,8 +190,6 @@
    end-pi;
 
    dcl-s  sUrl          varchar(1024);
-   dcl-s  sMapKey       varchar(50);
-   dcl-s  sMapUrl       varchar(100);
    dcl-s  sGeoCodes     varchar(100);
    dcl-s  sLat          like(dsGeoCode.sLatitude);
    dcl-s  sLng          like(dsGeoCode.sLongitude);
@@ -233,14 +197,11 @@
    dcl-s  sRecType      varchar(200);
    dcl-ds dsAddr        likeds(dsAddress);
 
+// Add jvm environment
+   addJvmEnvVar();
+
    if sLatitude <> '' and sLongitude <> '';
      sGeoCodes = sLatitude+','+sLongitude;
-
-// Get API Key from data area
-     sMapKey = 'key='+getApiKey('MAP');
-
-// Get API Url from data area
-     sMapUrl = getApiUrl('MAP');
 
 // Reach out to GOOGLE to get data using XML
 // "type" has 2 data elements - need only the first one hence type[1]
@@ -320,11 +281,13 @@
 
    dcl-s sTmpUrl        varchar(1024);
    dcl-s sUrl           varchar(1024);
-   dcl-s sMapKey        varchar(50);
    dcl-s sZoom          varchar(5)  inz('12');
    dcl-s sSize          varchar(10) inz('400x400');
    dcl-s sColor         varchar(10) inz('red');
    dcl-s sLabel         varchar(5)  inz('S');
+
+// Add jvm environment
+   addJvmEnvVar();
 
    if %parms >= %parmnum(nZoomNum) and %addr(nZoomNum) <> *null
       and nZoomNum > 0;
@@ -345,12 +308,6 @@
       and sMarkerLabel <> '';
      sLabel = sMarkerLabel;
    endif;
-
-// Get API Key from data area
-   sMapKey = 'key='+getApiKey('MAP');
-
-// Get API Url from data area
-   sMapUrl = getApiUrl('MAP');
 
 // Assemble the URL
    sTmpUrl = sMapUrl+
@@ -373,33 +330,33 @@
 //-------------------------------------------------------------
 // Get a URL representing a shortened version of a URL
 // Shortening service provider is Google
+// ============================================================
+// Google Shorten URL deprecated on 4/13/18
+// Service moved over to Bitly account.
+// Bitly requires to use httpgetclob instead of httppostclob
 //-------------------------------------------------------------
 
- dcl-proc getShortenUrl export;
-   dcl-pi *n            varchar(80);
-     sLongUrl           varchar(1024) const;
+ dcl-proc getGoogleShort export;
+   dcl-pi *n             varchar(80);
+     sLongUrl            varchar(1024) const;
    end-pi;
 
    dcl-s sPayload       varchar(1024);
    dcl-s sReqUrl        varchar(1024);
    dcl-s sHeader        varchar(1024);
    dcl-s sShortUrl      varchar(80);
-   dcl-s sLnkKey        varchar(50);
-   dcl-s sLnkUrl        varchar(100);
+
+
+// Add jvm environment
+   addJvmEnvVar();
 
 // Construct request header
    sHeader = '<httpHeader>'+
              '<header name="Content-Type" value="application/json"/>'+
              '</httpHeader>';
 
-// Get API Key from data area
-   sLnkKey = 'key='+getApiKey('URL');
-
-// Get API Url from data area
-   sLnkUrl = getApiUrl('URL');
-
 // Assemble the request URL
-   sReqUrl = sLnkUrl+'?'+sLnkKey;
+   sReqUrl = sMiniUrl+'?'+sMiniKey;
 
 // Assemble payload
    sPayload = '{"longUrl":"'+sLongUrl+'"}';
@@ -418,7 +375,10 @@
               columns (
                 id varchar(80) path '$.id'
              )) as x;
-   checksql(SQLCODE);
+
+  // Ignore Java stored procedure or user-defined function exception
+   // S8434 ***** checksql(SQLCODE);
+   CheckSql(SQLCODE:*omit:*omit:*omit:*omit:cSQL_Java_Proc_Err); // S8434
 
    return sShortUrl;
  end-proc;
@@ -428,20 +388,15 @@
 // Shortening service provider is Google
 //-------------------------------------------------------------
 
- dcl-proc getExpandUrl  export;
+ dcl-proc getGoogleLong export;
    dcl-pi *n            varchar(1024);
      sShortUrl          varchar(80) const;
    end-pi;
 
    dcl-s sLongUrl       varchar(1024);
-   dcl-s sLnkKey        varchar(50);
-   dcl-s sLnkUrl        varchar(100);
 
-// Get API Key from data area
-   sLnkKey = 'key='+getApiKey('URL');
-
-// Get API Url from data area
-   sLnkUrl = getApiUrl('URL');
+// Add jvm environment
+   addJvmEnvVar();
 
 // Reach out to GOOGLE to get data using JSON
 // Data parsing with internal JSON conversion
@@ -450,19 +405,139 @@
        into :sLongUrl
        from json_table(
               systools.httpgetclob(
-                (:sLnkUrl
+                (:sMiniUrl
                  ||'?shortUrl='
                  ||systools.urlencode(:sShortUrl,'UTF-8')
                  ||'&projection=FULL'
                  ||'&fields=longUrl'
                  ||'&'
-                 ||:sLnkKey),
+                 ||:sMiniKey),
                 null
               ), '$'
               columns (
-                id varchar(132) path '$.longUrl'
+                id varchar(1024) path '$.longUrl'
              )) as x;
    checksql(SQLCODE);
 
    return sLongUrl;
  end-proc;
+
+//-------------------------------------------------------------
+// Add JVM environment variable so that all the UDF and UDTF
+// will work
+//-------------------------------------------------------------
+
+ dcl-proc addJvmEnvVar  export;
+
+   dcl-s sCmd           varchar(100);
+
+   sCmd = 'CHGENVVAR ENVVAR(JAVA_HOME)'+
+          ' VALUE('+enquote('/QOpenSys/QIBM/ProdData/JavaVM/jdk70/64bit')+')'+
+          ' LEVEL(*JOB)';
+
+   system(sCmd);
+ end-proc;
+
+//-------------------------------------------------------------
+// Get a URL representing a shortened version of a URL
+// Shortening service provider is Bitly
+//-------------------------------------------------------------
+
+ dcl-proc getBitlyShort export;
+   dcl-pi *n            varchar(80);
+     sLongUrl           varchar(1024) const;
+   end-pi;
+
+   dcl-s sPayLoad       varchar(1024);
+   dcl-s sReqUrl        varchar(1024);
+   dcl-s sHeader        varchar(1024);
+   dcl-s sShortUrl      varchar(80);
+
+// Add jvm environment
+   addJvmEnvVar();
+
+// Construct request header
+   sHeader = '<httpHeader>'+
+             '<header name="Content-Type" value="application/json"/>'+
+             '</httpHeader>';
+
+// Assemble the request URL
+   sReqUrl = %trim(sBitUrl)+'/shorten'+'?access_token='+%trim(sBitToken);
+   sPayLoad = sLongUrl;
+
+// Reach out to Bitly to get data using JSON
+// Data parsing with internal JSON conversion
+
+   exec sql
+     select *
+       into :sShortUrl
+       from json_table(
+              systools.httpgetclob(
+                cast(
+                     trim(:sReqUrl)
+                     ||'&longUrl='
+                     ||systools.urlencode(trim(:sPayLoad),'UTF-8')
+                     as clob(200k)
+                    ),
+                trim(:sHeader)
+              ), '$'
+              columns (
+                id varchar(80) path '$.data.url'
+             )) as x;
+
+   checkSql(SQLCODE:*omit:*omit:*omit:*omit:cSQL_Java_Proc_Err);
+
+   return sShortUrl;
+ end-proc;
+
+//-------------------------------------------------------------
+// Expand a shortened URL back to regular URL
+// Shortening service provider is Bitly
+//-------------------------------------------------------------
+
+ dcl-proc getBitlyLong  export;
+   dcl-pi *n            varchar(1024);
+     sShortUrl          varchar(80) const;
+   end-pi;
+
+   dcl-s sPayLoad       varchar(80);
+   dcl-s sReqUrl        varchar(1024);
+   dcl-s sHeader        varchar(1024);
+   dcl-s sLongUrl       varchar(1024);
+
+// Add jvm environment
+   addJvmEnvVar();
+
+// Construct request header
+   sHeader = '<httpHeader>'+
+             '<header name="Content-Type" value="application/json"/>'+
+             '</httpHeader>';
+
+// Assemble the request URL
+   sReqUrl = %trim(sBitUrl)+'/expand'+'?access_token='+%trim(sBitToken);
+   sPayLoad = sShortUrl;
+
+// Reach out to GOOGLE to get data using JSON
+// Data parsing with internal JSON conversion
+   exec sql
+     select *
+       into :sLongUrl
+       from json_table(
+              systools.httpgetclob(
+                cast(
+                     trim(:sReqUrl)
+                     ||'&shortUrl='
+                     ||systools.urlencode(trim(:sPayLoad),'UTF-8')
+                     as clob(200k)
+                    ),
+                trim(:sHeader)
+              ), '$.data.expand'
+              columns (
+                id varchar(1024) path '$.long_url'
+             )) as x;
+   checkSql(SQLCODE:*omit:*omit:*omit:*omit:cSQL_Java_Proc_Err);
+
+   return sLongUrl;
+ end-proc;
+
+ 
